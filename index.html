@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Christian Blevens — v2 Prototype</title>
+    <link rel="stylesheet" href="css/styles.css">
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/",
+        "@dimforge/rapier3d-compat": "https://unpkg.com/@dimforge/rapier3d-compat@0.19.3/rapier.mjs"
+      }
+    }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+</head>
+<body>
+    <div id="stage">
+        <div id="webgl-container"></div>
+        <div id="css3d-container"></div>
+    </div>
+
+    <div id="top-nav"></div>
+
+    <div id="ui-overlay">
+        <div class="ui-top">
+            <input id="search" type="search" placeholder="Search projects...">
+            <div id="filter-bar"></div>
+        </div>
+
+        <div class="ui-bottom">
+            <button id="btn-shuffle">Shuffle</button>
+            <button id="btn-reset-camera">Reset View</button>
+            <button id="btn-grid-toggle">Grid View</button>
+            <button id="btn-help" class="ui-bottom-right" title="About this site" aria-label="About this site">?</button>
+        </div>
+    </div>
+
+    <div id="grid-view" hidden>
+        <div class="grid-header">
+            <h2>Projects</h2>
+            <button id="btn-grid-close">Back to 3D</button>
+        </div>
+        <div id="grid-content"></div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

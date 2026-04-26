@@ -1,0 +1,652 @@
+:root {
+    --bg: #0d0d10;
+    --fg: #e7e7ea;
+    --accent: #4f9dff;
+    --accent-dim: #2d5aa0;
+    --ui-bg: rgba(20, 20, 24, 0.85);
+    --ui-border: rgba(255, 255, 255, 0.12);
+    --card-bg: #18181c;
+    --card-border: rgba(255, 255, 255, 0.08);
+    --tag-bg: rgba(79, 157, 255, 0.15);
+    --tag-fg: #9fc5ff;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+#stage { position: fixed; inset: 0; }
+
+#webgl-container, #css3d-container {
+    position: absolute;
+    inset: 0;
+}
+/* CSS3D on top visually (cards sit on the table), WebGL underneath with
+   pointer-events:none so it never intercepts clicks. CSS3D container and
+   its renderer wrappers are left at default pointer-events:auto — the
+   browser routes events to CSS-transformed .card descendants via their
+   visual hit-area; clicks outside any card hit the cameraElement and are
+   treated as background-unfocus by input.js (closest('.card') check). */
+#webgl-container { z-index: 1; pointer-events: none; }
+#css3d-container { z-index: 2; }
+
+#ui-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    /* Top padding clears the fixed glassy nav strip. */
+    padding: 4.2rem 1rem 1rem;
+    gap: 0.75rem;
+}
+.ui-bottom { margin-top: auto; }
+
+/* Top nav: full-width glassy strip pinned to the top of the viewport.
+   Tabs centered. The strip's blur + gradient give it a frosted look that
+   reads as a real chrome surface, separate from the floating bottom buttons. */
+#top-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 12;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(
+        180deg,
+        rgba(20, 20, 28, 0.30) 0%,
+        rgba(20, 20, 28, 0.10) 100%
+    );
+    backdrop-filter: blur(3px) saturate(140%);
+    -webkit-backdrop-filter: blur(3px) saturate(140%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    pointer-events: auto;
+}
+.nav-btn {
+    background: rgba(79, 157, 255, 0.18);
+    border: 1px solid rgba(79, 157, 255, 0.55);
+    color: #cfe2ff;
+    padding: 0.5rem 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.92rem;
+    font-weight: 500;
+    transition: background 140ms, border-color 140ms, color 140ms;
+}
+.nav-btn:hover {
+    background: rgba(79, 157, 255, 0.32);
+    border-color: var(--accent);
+    color: #ffffff;
+}
+.ui-top, .ui-bottom {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    pointer-events: none;
+}
+.ui-top > *, .ui-bottom > * { pointer-events: auto; }
+
+#search {
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    color: var(--fg);
+    padding: 0.6rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    width: 260px;
+    max-width: 60vw;
+    backdrop-filter: blur(8px);
+    outline: none;
+}
+#search:focus { border-color: var(--accent); }
+
+#filter-bar {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    pointer-events: auto;
+}
+
+.filter-btn, #btn-shuffle, #btn-reset-camera, #btn-grid-toggle, #btn-grid-close {
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    color: var(--fg);
+    padding: 0.5rem 0.9rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    backdrop-filter: blur(8px);
+    transition: background 120ms, border-color 120ms;
+}
+.filter-btn:hover, #btn-shuffle:hover, #btn-reset-camera:hover,
+#btn-grid-toggle:hover, #btn-grid-close:hover {
+    border-color: var(--accent);
+}
+.filter-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+}
+
+/* --- Cards --- */
+/* Card internals authored at PX_PER_UNIT=200 (4× the visual baseline).
+   All absolute units below are 4× their natural size so they look right after
+   CSS_BASE_SCALE compression in the CSS3D matrix. */
+.card {
+    position: absolute;
+    background: var(--card-bg);
+    border: 4px solid var(--card-border);
+    border-radius: 56px;
+    box-shadow: 0 24px 96px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    user-select: none;
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    will-change: transform;
+}
+.card.dragging { cursor: grabbing; }
+.card.filtered-out { opacity: 0.25; transition: opacity 250ms; }
+.card:not(.filtered-out) { opacity: 1; transition: opacity 250ms; }
+.card:not(.face-up) { display: none; }
+
+/* --- Front face layout --- */
+.card-front-only .card-top {
+    position: relative;
+    width: 100%;
+    height: 55%;
+    background: #18181c;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.card-front-only.expanded .card-top { height: 100%; }
+.card-front-only.expanded .card-bottom { display: none; }
+/* The floating per-card toggle (in #iframe-toggle-stage) replaces the
+   in-card toggle whenever the card is expanded. */
+.card-front-only.expanded .card-toggle { display: none; }
+.card-thumbnail, .card-iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border: none;
+}
+
+.card-front-only .card-bottom {
+    padding: 4rem 4.4rem 4.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    flex: 1;
+    overflow: hidden;
+}
+
+.card-toggle {
+    position: absolute;
+    top: 48px;
+    right: 48px;
+    width: 216px;
+    height: 104px;
+    border-radius: 52px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 4px solid rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    z-index: 5;
+    transition: background 160ms;
+}
+.card-toggle:hover { background: rgba(0, 0, 0, 0.75); }
+.card-toggle.expanded { background: var(--accent-dim); border-color: var(--accent); }
+
+.card-toggle-knob {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #e7e7ea;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    transition: left 160ms ease;
+}
+.card-toggle.expanded .card-toggle-knob { left: 120px; }
+
+.card-title {
+    font-size: 4.2rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.card-summary {
+    font-size: 3.28rem;
+    color: rgba(231, 231, 234, 0.75);
+    line-height: 1.35;
+}
+.card-tags {
+    display: flex;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    margin-top: auto;
+}
+.tag {
+    background: var(--tag-bg);
+    color: var(--tag-fg);
+    font-size: 2.72rem;
+    padding: 0.6rem 2rem;
+    border-radius: 40px;
+    white-space: nowrap;
+}
+
+/* --- Back face layout --- */
+.card-back-only {
+    padding: 5rem 5.4rem;
+    overflow: auto;
+}
+.card-back-only .card-title {
+    margin-bottom: 2.8rem;
+    font-size: 4.8rem;
+}
+.card-back-only .card-description {
+    font-size: 3.28rem;
+    line-height: 1.5;
+    color: rgba(231, 231, 234, 0.85);
+    margin-bottom: 4rem;
+}
+.card-back-only .card-description p { margin-bottom: 2.4rem; }
+.card-back-only .card-description h1,
+.card-back-only .card-description h2,
+.card-back-only .card-description h3 {
+    margin: 3.2rem 0 1.6rem;
+    font-size: 3.8rem;
+}
+.card-back-only .card-tags { margin-bottom: 3.2rem; }
+
+.card-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.6rem;
+}
+.card-link {
+    display: inline-block;
+    padding: 1.8rem 3.8rem;
+    background: var(--accent-dim);
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 24px;
+    font-size: 3.28rem;
+}
+.card-link:hover { background: var(--accent); }
+
+/* --- Iframe stage: stable container for all card iframes ---
+   Each .stage-iframe is positioned absolutely via inline styles each frame
+   to track its card's screen rect. Iframes never reparent (they live here
+   from creation onward), preventing the iframe-reload flash on real sites. */
+#iframe-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    pointer-events: none;
+}
+.stage-iframe {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--card-px-w);
+    height: var(--card-px-h);
+    border: none;
+    transform-origin: 0 0;
+    background: #18181c;
+    border-radius: 56px;
+    overflow: hidden;
+}
+
+/* Per-card floating toggle. One .iframe-toggle-host per expanded+faceUp card,
+   positioned per frame via JS to track its card's screen rect. The pill
+   inside sits absolute top-right with native screen-pixel sizing. */
+#iframe-toggle-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 16;
+    pointer-events: none;
+}
+/* Toggle host is sized in card-native pixels (matching CARD_PX_W × CARD_PX_H)
+   so it shares the same matrix3d transform pipeline as the iframe. The inner
+   pill uses the same card-native dimensions as the in-card .card-toggle. */
+.iframe-toggle-host {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--card-px-w);
+    height: var(--card-px-h);
+    transform-origin: 0 0;
+    pointer-events: none;
+}
+.iframe-toggle-host > .card-toggle {
+    position: absolute;
+    top: 48px;
+    right: 48px;
+    width: 216px;
+    height: 104px;
+    border-radius: 52px;
+    pointer-events: auto;
+}
+
+/* --- Modal shell ---
+   #modal-root sits above iframes and toggles. Backdrop captures click-off
+   to dismiss; panel stops propagation so internal clicks don't dismiss. */
+#modal-root {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+#modal-root[hidden] { display: none; }
+.modal-stack {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    max-width: 100%;
+    pointer-events: none;
+}
+.modal-stack > * { pointer-events: auto; }
+.modal-hint-slot { display: flex; }
+.modal-hint-slot[hidden] { display: none; }
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    cursor: pointer;
+}
+.modal-panel {
+    position: relative;
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 12px;
+    color: var(--fg);
+    max-width: min(720px, 92vw);
+    max-height: 86vh;
+    overflow: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(12px);
+}
+/* Wide variant for content that benefits from more horizontal room (resume). */
+.modal-panel.modal-panel--wide { max-width: min(960px, 94vw); }
+
+/* Dismiss-as-tutorial hint sits below the panel inside #modal-root and is
+   itself clickable as a fallback dismissal target — the text reads "Click
+   anywhere to dismiss" so clicking the hint doing nothing would be confusing. */
+.modal-hint {
+    background: rgba(20, 20, 24, 0.7);
+    color: var(--fg);
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    padding: 0.7rem 1.4rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: background 160ms, border-color 160ms;
+    user-select: none;
+}
+.modal-hint:hover { background: rgba(40, 40, 48, 0.85); border-color: var(--accent); }
+
+/* Intro section content. Banner video as panel background; bio + headshot
+   layered on top with a darkening scrim for legibility. */
+.intro-content {
+    position: relative;
+    width: min(640px, 88vw);
+    min-height: 360px;
+    overflow: hidden;
+}
+.intro-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+}
+.intro-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(13, 13, 16, 0.55), rgba(13, 13, 16, 0.85));
+    z-index: 1;
+}
+.intro-body {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    padding: 2rem;
+}
+.intro-headshot {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+}
+.intro-text h1 {
+    font-size: 1.6rem;
+    margin-bottom: 0.5rem;
+}
+.intro-text p {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: rgba(231, 231, 234, 0.9);
+}
+@media (max-width: 560px) {
+    .intro-body { flex-direction: column; text-align: center; }
+}
+
+/* Intro hint slot: dismiss button + controls cheat sheet stacked. */
+.intro-hint-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+    max-width: min(640px, 88vw);
+}
+.controls-cheat {
+    background: rgba(20, 20, 24, 0.7);
+    border: 1px solid var(--ui-border);
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    backdrop-filter: blur(8px);
+    color: var(--fg);
+    width: 100%;
+}
+.controls-cheat h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(231, 231, 234, 0.65);
+    margin-bottom: 0.6rem;
+    text-align: center;
+}
+.controls-cheat dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.4rem 1.2rem;
+}
+.cheat-row { display: flex; gap: 0.6rem; align-items: baseline; }
+.cheat-row dt {
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+.cheat-row dd { font-size: 0.85rem; color: rgba(231, 231, 234, 0.85); }
+
+/* Generic section content (about / contact / comments / resume modals). */
+.section-content {
+    padding: 1.6rem 1.8rem;
+    color: var(--fg);
+    width: min(640px, 88vw);
+}
+.section-content h1 {
+    font-size: 1.7rem;
+    margin-bottom: 0.6rem;
+}
+.section-content .section-lead {
+    color: rgba(231, 231, 234, 0.75);
+    margin-bottom: 1.2rem;
+    font-size: 0.95rem;
+}
+
+/* Contact form */
+.contact-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.form-input {
+    background: rgba(13, 13, 16, 0.7);
+    border: 1px solid var(--ui-border);
+    color: var(--fg);
+    padding: 0.7rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-submit {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--fg);
+    padding: 0.7rem 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: background 120ms;
+}
+.form-submit:hover:not(:disabled) { background: var(--accent); }
+.form-submit:disabled { opacity: 0.6; cursor: default; }
+.form-status {
+    padding: 0.7rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.form-status[data-kind="ok"]    { background: rgba(60, 160, 80, 0.15); border: 1px solid rgba(80, 200, 100, 0.4); }
+.form-status[data-kind="error"] { background: rgba(200, 60, 60, 0.15); border: 1px solid rgba(220, 80, 80, 0.4); }
+
+/* Comments host: drop-in widget self-iframes; just give it room. */
+.comments-host { min-height: 320px; }
+
+/* Resume frame fills the modal. */
+.resume-content { padding: 1.2rem; width: min(720px, 92vw); }
+.resume-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 0.8rem; gap: 1rem;
+}
+.resume-download {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--fg);
+    text-decoration: none;
+    padding: 0.45rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+.resume-download:hover { background: var(--accent); }
+.resume-frame-wrap {
+    width: 100%;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+/* US Letter aspect (8.5 × 11). Iframe renders the doc natively at full
+   container width — no CSS scaling, no blur. */
+.resume-frame {
+    width: 100%;
+    aspect-ratio: 8.5 / 11;
+    border: none;
+    display: block;
+}
+
+/* Mobile pass: nav wraps, modal padding tightens, controls cheat collapses. */
+@media (max-width: 560px) {
+    #top-nav { padding: 0.45rem 0.6rem; gap: 0.35rem; flex-wrap: wrap; }
+    #ui-overlay { padding: 3.6rem 0.6rem 0.6rem; gap: 0.5rem; }
+    .nav-btn { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+    .section-content { padding: 1.2rem; }
+    .controls-cheat dl { grid-template-columns: 1fr; }
+}
+
+/* Help button — bottom-right of the screen, same row as shuffle/reset/grid. */
+.ui-bottom-right { margin-left: auto; }
+#btn-help {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    color: var(--fg);
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: background 120ms, border-color 120ms;
+    pointer-events: auto;
+}
+#btn-help:hover { border-color: var(--accent); background: rgba(40, 40, 48, 0.85); }
+
+/* --- Grid fallback --- */
+#grid-view {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 20;
+    overflow: auto;
+    padding: 2rem;
+}
+#grid-view .grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1400px;
+    margin: 0 auto 1.5rem;
+}
+#grid-view h2 { font-size: 1.4rem; }
+#btn-grid-close { pointer-events: auto; }
+
+#grid-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+#grid-content .grid-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+}
+#grid-content .grid-card img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    display: block;
+}
+#grid-content .grid-card .pad { padding: 1rem; }
