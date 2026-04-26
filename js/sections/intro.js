@@ -1,7 +1,7 @@
 import * as Modal from '../modal.js';
 
-const HEADSHOT_URL = 'https://i.imgur.com/z7NBCHn.jpeg';
-const BANNER_VIDEO_URL = 'https://i.imgur.com/IAGSnvD.mp4';
+const HEADSHOT_URL = '/assets/intro/z7NBCHn.jpeg';
+const BANNER_VIDEO_URL = '/assets/intro/IAGSnvD.mp4';
 
 const BIO = `I build intelligent systems across web, AI, and game development.
 From AI-powered video editors and face anonymization pipelines to
