@@ -429,6 +429,16 @@ export class Card {
             if (css3d) this.frontVideo.pause();
             else this.frontVideo.play().catch(() => {});
         }
+        // Symmetric handling for the live-DOM <video> shown in css3d mode.
+        // Built with autoplay, but the element is display:none until the
+        // CSS3DObject becomes visible — Chromium's autoplay policy defers
+        // playback in that state and does not retry on visibility flip,
+        // leaving the video frozen on its first decoded frame.
+        const domVideo = this.frontEl.querySelector('video.card-thumbnail');
+        if (domVideo) {
+            if (css3d) domVideo.play().catch(() => {});
+            else domVideo.pause();
+        }
     }
 
     // Called by CameraController when this card becomes / stops being focused.
