@@ -24,15 +24,23 @@ export class CameraController {
     }
 
     focusOn(card) {
+        // Drop any previously-focused card back to textured (unless it's
+        // expanded — expanded cards always stay in css3d for the iframe).
+        if (this.focusCard && this.focusCard !== card) {
+            this.focusCard.setFocused(false);
+        }
         this.focusCard = card;
         this.mode = 'focused';
         this.iframeOverlay?.setFocusedCard(card);
+        card.setFocused(true);
     }
 
     unfocus() {
+        const prev = this.focusCard;
         this.focusCard = null;
         this.mode = 'overview';
         this.iframeOverlay?.setFocusedCard(null);
+        prev?.setFocused(false);
     }
 
     _computeFocusTarget() {

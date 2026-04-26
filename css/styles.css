@@ -122,7 +122,7 @@ html, body {
     pointer-events: auto;
 }
 
-.filter-btn, #btn-shuffle, #btn-reset-camera, #btn-grid-toggle, #btn-grid-close {
+.filter-btn, #btn-shuffle, #btn-reset-camera, #btn-grid-toggle, #btn-card-view {
     background: var(--ui-bg);
     border: 1px solid var(--ui-border);
     color: var(--fg);
@@ -134,9 +134,19 @@ html, body {
     transition: background 120ms, border-color 120ms;
 }
 .filter-btn:hover, #btn-shuffle:hover, #btn-reset-camera:hover,
-#btn-grid-toggle:hover, #btn-grid-close:hover {
+#btn-grid-toggle:hover, #btn-card-view:hover {
     border-color: var(--accent);
 }
+
+/* Grid mode: only "Card View" is visible in the bottom row; shuffle / reset
+   view / open-grid are hidden because they don't apply to grid view. */
+#btn-card-view { display: none; }
+body.grid-mode #btn-card-view { display: inline-block; }
+body.grid-mode #btn-shuffle,
+body.grid-mode #btn-reset-camera,
+body.grid-mode #btn-grid-toggle { display: none; }
+body.grid-mode #search,
+body.grid-mode #filter-bar { /* keep filters/search visible by default */ }
 .filter-btn.active {
     background: var(--accent-dim);
     border-color: var(--accent);
@@ -173,10 +183,12 @@ html, body {
     overflow: hidden;
     flex-shrink: 0;
 }
-.card-front-only.expanded .card-top { height: 100%; }
-.card-front-only.expanded .card-bottom { display: none; }
 /* The floating per-card toggle (in #iframe-toggle-stage) replaces the
-   in-card toggle whenever the card is expanded. */
+   in-card toggle whenever the card is expanded. The iframe overlay covers
+   the full card face on its own (matrix3d projection of the card rect), so
+   no layout reflow on .expanded is needed — the iframe occludes the front
+   face DOM entirely. Compact and expanded share the same DOM layout; only
+   physical scale differs. */
 .card-front-only.expanded .card-toggle { display: none; }
 .card-thumbnail, .card-iframe {
     position: absolute;
@@ -610,24 +622,20 @@ html, body {
 }
 #btn-help:hover { border-color: var(--accent); background: rgba(40, 40, 48, 0.85); }
 
-/* --- Grid fallback --- */
+/* --- Grid view ---
+   Sits above the WebGL/CSS3D stage but below the fixed top nav (z:12) and
+   the ui-overlay chrome (z:10), so the nav, search/filter, and bottom action
+   buttons remain visible and usable while the grid scrolls beneath them. */
 #grid-view {
     position: fixed;
     inset: 0;
     background: var(--bg);
-    z-index: 20;
+    z-index: 5;
     overflow: auto;
-    padding: 2rem;
+    /* Top padding clears the fixed nav strip + the search/filter row.
+       Bottom padding clears the floating bottom action buttons. */
+    padding: 7rem 2rem 6rem;
 }
-#grid-view .grid-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 1400px;
-    margin: 0 auto 1.5rem;
-}
-#grid-view h2 { font-size: 1.4rem; }
-#btn-grid-close { pointer-events: auto; }
 
 #grid-content {
     display: grid;
@@ -642,8 +650,11 @@ html, body {
     border-radius: 12px;
     overflow: hidden;
     cursor: pointer;
+    transition: opacity 250ms;
 }
-#grid-content .grid-card img {
+#grid-content .grid-card.filtered-out { opacity: 0.25; }
+#grid-content .grid-card img,
+#grid-content .grid-card video {
     width: 100%;
     height: 160px;
     object-fit: cover;

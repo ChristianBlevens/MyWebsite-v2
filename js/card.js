@@ -9,6 +9,14 @@ import {
     CSS_BASE_SCALE,
     CELL_SIZE,
 } from './layout.js';
+import {
+    renderFrontStaticCanvas,
+    renderFrontBottomTextCanvas,
+    renderTogglePillCanvas,
+    getGenericBackCanvas,
+    TOGGLE_RECT,
+    TOP_REGION_FRACTION,
+} from './card-texture.js';
 
 // Card dimensions and authoring resolution come from layout.js (derived from
 // the global cell size). Re-exported here so existing imports from card.js
@@ -28,6 +36,22 @@ function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
+}
+
+// Animated thumbnails are MP4 (imgur auto-transcodes uploaded GIFs to MP4
+// at the same URL, just with the extension swapped). MP4 is hardware-decoded
+// where GIF is JS/canvas-decoded — orders of magnitude cheaper on mobile.
+// Static thumbnails stay as <img>.
+function isVideoUrl(url) {
+    return /\.(mp4|webm|mov)(?:[?#]|$)/i.test(url || '');
+}
+
+function thumbnailMarkup(url) {
+    if (!url) return '';
+    if (isVideoUrl(url)) {
+        return `<video class="card-thumbnail" src="${escapeHtml(url)}" muted loop autoplay playsinline preload="metadata"></video>`;
+    }
+    return `<img class="card-thumbnail" src="${escapeHtml(url)}" alt="">`;
 }
 
 export class Card {
@@ -63,24 +87,46 @@ export class Card {
         this._pivotInited = false;
         this._prevFaceUp = null;
 
-        // DOM: two separate face elements
+        // Two representations:
+        //   'textured' — WebGL plane meshes with baked CanvasTextures (and
+        //                VideoTexture for animated thumbnails). Default state
+        //                for compact, unfocused cards. Cheap on mobile because
+        //                each card is one (or a few) WebGL draw calls instead
+        //                of a 1260×1890 GPU compositor layer.
+        //   'css3d'    — live DOM via CSS3DObject. Used only while the card is
+        //                focused or expanded — i.e. when the user is actually
+        //                reading text / clicking links / using a live iframe.
+        // Swapped by _setRepresentation() based on focus/expand state.
+        this.representation = 'textured';
+        this._isFocused = false;
+
+        // DOM: two separate face elements (used in 'css3d' representation)
         this.frontEl = this._buildFrontEl();
         this.backEl = this._buildBackEl();
 
         // CSS3DObjects: one per face, positioned on either side of the card body.
+        // Hidden initially — only shown when representation === 'css3d'.
         this.frontObj = new CSS3DObject(this.frontEl);
         this.frontObj.position.set(0, +CARD_T / 2 + 0.002, 0);
         this.frontObj.rotation.x = -Math.PI / 2;
         this.frontObj.scale.setScalar(CSS_BASE_SCALE);
+        this.frontObj.visible = false;
 
         this.backObj = new CSS3DObject(this.backEl);
         this.backObj.position.set(0, -CARD_T / 2 - 0.002, 0);
         this.backObj.rotation.x = +Math.PI / 2;
         this.backObj.scale.setScalar(CSS_BASE_SCALE);
+        this.backObj.visible = false;
 
         this.pivot = new THREE.Group();
         this.pivot.add(this.frontObj);
         this.pivot.add(this.backObj);
+
+        // Textured-plane representation (WebGL meshes parented to pivot).
+        this.frontMeshes = [];
+        this.frontVideo = null;
+        this._buildTexturedFront();
+        this._buildTexturedBack();
 
         // Invisible hit-plane (raycast target). Lies flat in card-local space,
         // matches card width/depth. Parented to pivot so it tracks position,
@@ -132,9 +178,7 @@ export class Card {
                 <div class="card-toggle-knob"></div>
             </div>
             <div class="card-top">
-                ${this.project.thumbnail
-                    ? `<img class="card-thumbnail" src="${escapeHtml(this.project.thumbnail)}" alt="">`
-                    : ''}
+                ${thumbnailMarkup(this.project.thumbnail)}
             </div>
             <div class="card-bottom">
                 <h3 class="card-title">${escapeHtml(this.project.title)}</h3>
@@ -179,6 +223,166 @@ export class Card {
         return [this.frontEl, this.backEl];
     }
 
+    // --- Textured representation -----------------------------------------
+
+    _buildTexturedFront() {
+        const project = this.project;
+        const isVideo = project.thumbnail && /\.(mp4|webm|mov)(?:[?#]|$)/i.test(project.thumbnail);
+
+        // Group wrapper so scale.setScalar(scaleCurrent) on the group scales
+        // both the geometry and the relative positions of partial-sized planes
+        // (video case) consistently. Without the wrapper, scaling individual
+        // meshes would scale their geometry but not their offset positions.
+        this.frontGroup = new THREE.Group();
+        this.pivot.add(this.frontGroup);
+
+        if (isVideo) {
+            // Top region: VideoTexture plane (GPU-direct from <video>, no
+            // per-frame canvas re-upload). Sized to the top 55% of the card.
+            const video = document.createElement('video');
+            video.src = project.thumbnail;
+            video.muted = true;
+            video.loop = true;
+            video.autoplay = true;
+            video.playsInline = true;
+            video.crossOrigin = 'anonymous';
+            video.preload = 'auto';
+            // Mobile autoplay needs the muted+playsinline combo plus a play()
+            // call. The promise rejection (e.g., suspended audio context) is
+            // silently swallowed; user can resume by interacting with the page.
+            video.play().catch(() => {});
+            this.frontVideo = video;
+
+            const videoTex = new THREE.VideoTexture(video);
+            videoTex.colorSpace = THREE.SRGBColorSpace;
+            videoTex.minFilter = THREE.LinearFilter;
+            const videoMat = new THREE.MeshBasicMaterial({
+                map: videoTex, side: THREE.FrontSide,
+            });
+            const topH = CARD_H * TOP_REGION_FRACTION;
+            const topPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(CARD_W, topH), videoMat);
+            topPlane.rotation.x = -Math.PI / 2;
+            // Plane geometry's local +Y maps (after rotation.x=-π/2) to pivot -Z.
+            // The top-of-card sits at pivot Z = -CARD_H/2; centering the
+            // video plane there means its center is at Z = -CARD_H/2 + topH/2.
+            topPlane.position.set(0, +CARD_T / 2 + 0.001, -CARD_H / 2 + topH / 2);
+            this.frontMeshes.push(topPlane);
+
+            // Text region: full-card-sized canvas, transparent above the text
+            // so the video plane shows through. Drawn at +0.002 in Y to layer
+            // above the video plane (no bleed where they could overlap at the
+            // 55%/45% seam thanks to the matching geometry sizes, but the
+            // small offset prevents z-fighting).
+            const textCanvas = renderFrontBottomTextCanvas(project);
+            const textTex = new THREE.CanvasTexture(textCanvas);
+            textTex.colorSpace = THREE.SRGBColorSpace;
+            const textMat = new THREE.MeshBasicMaterial({
+                map: textTex, transparent: true, side: THREE.FrontSide,
+            });
+            const textPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(CARD_W, CARD_H), textMat);
+            textPlane.rotation.x = -Math.PI / 2;
+            textPlane.position.set(0, +CARD_T / 2 + 0.002, 0);
+            this.frontMeshes.push(textPlane);
+
+            // Toggle pill overlay (only for cards with iframeUrl). Separate
+            // plane because we can't composite onto a VideoTexture.
+            if (project.iframeUrl) {
+                const pillCanvas = renderTogglePillCanvas(project);
+                const pillTex = new THREE.CanvasTexture(pillCanvas);
+                pillTex.colorSpace = THREE.SRGBColorSpace;
+                const pillMat = new THREE.MeshBasicMaterial({
+                    map: pillTex, transparent: true, side: THREE.FrontSide,
+                });
+                const pillPlane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(CARD_W, CARD_H), pillMat);
+                pillPlane.rotation.x = -Math.PI / 2;
+                pillPlane.position.set(0, +CARD_T / 2 + 0.003, 0);
+                this.frontMeshes.push(pillPlane);
+            }
+        } else {
+            // Single composited canvas — bg + thumbnail (if any) + text + toggle
+            // + border, all in one texture. Cards with no thumbnail get the
+            // dark placeholder background in the top region for free.
+            const canvas = renderFrontStaticCanvas(project, null);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            const mat = new THREE.MeshBasicMaterial({
+                map: tex, side: THREE.FrontSide,
+            });
+            const plane = new THREE.Mesh(
+                new THREE.PlaneGeometry(CARD_W, CARD_H), mat);
+            plane.rotation.x = -Math.PI / 2;
+            plane.position.set(0, +CARD_T / 2 + 0.002, 0);
+            this.frontMeshes.push(plane);
+
+            // Async thumbnail load: when the image arrives, redraw the canvas
+            // with the thumbnail composited in and mark the texture dirty.
+            if (project.thumbnail) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const fresh = renderFrontStaticCanvas(project, img);
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(fresh, 0, 0);
+                    tex.needsUpdate = true;
+                };
+                img.src = project.thumbnail;
+            }
+        }
+
+        for (const m of this.frontMeshes) this.frontGroup.add(m);
+    }
+
+    _buildTexturedBack() {
+        const canvas = getGenericBackCanvas();
+        // The back is identical for every card → share one texture instance.
+        if (!Card._sharedBackTexture) {
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            Card._sharedBackTexture = tex;
+        }
+        const mat = new THREE.MeshBasicMaterial({
+            map: Card._sharedBackTexture, side: THREE.FrontSide,
+        });
+        const plane = new THREE.Mesh(
+            new THREE.PlaneGeometry(CARD_W, CARD_H), mat);
+        plane.rotation.x = +Math.PI / 2;
+        plane.position.set(0, -CARD_T / 2 - 0.002, 0);
+
+        this.backGroup = new THREE.Group();
+        this.backGroup.add(plane);
+        this.pivot.add(this.backGroup);
+        this.backMesh = plane;
+    }
+
+    // Swap between textured (default) and css3d (focused or expanded). Cheap:
+    // toggles .visible flags; both representations stay parented to the pivot.
+    _setRepresentation(mode) {
+        if (this.representation === mode) return;
+        this.representation = mode;
+        const css3d = (mode === 'css3d');
+        if (this.frontGroup) this.frontGroup.visible = !css3d;
+        if (this.backGroup) this.backGroup.visible = !css3d;
+        this.frontObj.visible = css3d;
+        this.backObj.visible = css3d;
+        // Pause the video element when CSS3D takes over — saves the decoder
+        // doing work for a texture that isn't being sampled.
+        if (this.frontVideo) {
+            if (css3d) this.frontVideo.pause();
+            else this.frontVideo.play().catch(() => {});
+        }
+    }
+
+    // Called by CameraController when this card becomes / stops being focused.
+    setFocused(focused) {
+        this._isFocused = focused;
+        if (focused) this._setRepresentation('css3d');
+        else if (!this.expanded) this._setRepresentation('textured');
+    }
+
     // Convert a world-space raycast hit point on this card's hit-plane into
     // (face, element, px, py) where px/py are in the rendered DOM card's
     // native pixel coordinate space (CARD_PX_W × CARD_PX_H).
@@ -218,6 +422,28 @@ export class Card {
     // deepest one whose layout box contains (px, py). Falls back to the root
     // face element (which means "card-level click").
     findElementAtPixels(face, px, py) {
+        // Textured (compact) cards have no live DOM — there is no offsetLeft/
+        // offsetWidth to read. The only interactable region is the toggle pill
+        // on iframe-capable cards' front face, hit-tested against the same
+        // hardcoded rect used to draw it.
+        if (this.representation === 'textured') {
+            if (face === 'front' && this.project.iframeUrl) {
+                if (px >= TOGGLE_RECT.x && px < TOGGLE_RECT.x + TOGGLE_RECT.w
+                    && py >= TOGGLE_RECT.y && py < TOGGLE_RECT.y + TOGGLE_RECT.h) {
+                    if (!this._fakeToggleEl) this._fakeToggleEl = {
+                        classList: { contains: (c) => c === 'card-toggle' },
+                        tagName: 'DIV',
+                    };
+                    return this._fakeToggleEl;
+                }
+            }
+            if (!this._fakeRootEl) this._fakeRootEl = {
+                classList: { contains: () => false },
+                tagName: 'DIV',
+            };
+            return this._fakeRootEl;
+        }
+        // CSS3D (focused / expanded): walk the live DOM as before.
         const root = face === 'front' ? this.frontEl : this.backEl;
         const candidates = root.querySelectorAll(
             '.card-toggle, a, button'
@@ -253,12 +479,20 @@ export class Card {
         for (const root of [this.frontEl, this.backEl]) {
             root.querySelector('.card-toggle')?.classList.toggle('expanded', this.expanded);
         }
-        // Front face full-iframe layout when expanded (CSS hides .card-bottom
-        // and .card-thumbnail; iframe is rendered separately by overlay).
+        // .expanded class on frontEl now only hides the in-card toggle (the
+        // floating overlay toggle replaces it). No layout reflow.
         this.frontEl.classList.toggle('expanded', this.expanded);
 
-        if (this.expanded) this.iframeOverlay?.notifyExpanded(this);
-        else this.iframeOverlay?.notifyCompacted(this);
+        if (this.expanded) {
+            this.iframeOverlay?.notifyExpanded(this);
+            // Expanded cards always need live DOM (iframe overlay + interactive
+            // back face when flipped).
+            this._setRepresentation('css3d');
+        } else {
+            this.iframeOverlay?.notifyCompacted(this);
+            // Drop back to textured unless we're still the focused card.
+            if (!this._isFocused) this._setRepresentation('textured');
+        }
     }
 
     // Force-compact (used by the overlay's expansion-cap eviction).
@@ -295,6 +529,16 @@ export class Card {
         this.filteredOut = out;
         this.frontEl.classList.toggle('filtered-out', out);
         this.backEl.classList.toggle('filtered-out', out);
+        // Also dim the textured plane materials. CSS rule covers the css3d
+        // representation; this covers the textured representation.
+        const dim = out ? 0.25 : 1;
+        const apply = (mesh) => {
+            if (!mesh || !mesh.material) return;
+            mesh.material.transparent = true;
+            mesh.material.opacity = dim;
+        };
+        for (const m of this.frontMeshes) apply(m);
+        apply(this.backMesh);
     }
 
     beginDrag(targetXZ) {
@@ -404,6 +648,11 @@ export class Card {
         this.frontObj.scale.setScalar(CSS_BASE_SCALE * this.scaleCurrent);
         this.backObj.scale.setScalar(CSS_BASE_SCALE * this.scaleCurrent);
         this.hitPlane.scale.setScalar(this.scaleCurrent);
+        // Textured planes are authored in real-world units, so scaling the
+        // group directly with scaleCurrent (no CSS_BASE_SCALE factor) gives
+        // them the same expansion behavior as the css3d representation.
+        if (this.frontGroup) this.frontGroup.scale.setScalar(this.scaleCurrent);
+        if (this.backGroup) this.backGroup.scale.setScalar(this.scaleCurrent);
         this.body.collider(0).setHalfExtents({
             x: (CARD_W / 2) * this.scaleCurrent,
             y: CARD_T / 2,

@@ -26,6 +26,14 @@ export function setupUi({ cards, cameraController, iframeOverlay }) {
             const match = id === 'all' || (card.project.tags || []).includes(id);
             card.setFilteredOut(!match);
         }
+        // Mirror filter state onto grid items so the grid view stays consistent
+        // with the 3D table when the user switches between them.
+        for (const el of gridContent.querySelectorAll('.grid-card')) {
+            const cardId = el.dataset.id;
+            const card = cards.find(c => c.project.id === cardId);
+            const match = !card || id === 'all' || (card.project.tags || []).includes(id);
+            el.classList.toggle('filtered-out', !match);
+        }
     }
 
     // Search — only triggers on Enter so typing doesn't yank the camera around
@@ -77,16 +85,19 @@ export function setupUi({ cards, cameraController, iframeOverlay }) {
         cameraController.unfocus();
     });
 
-    // Grid fallback toggle
+    // Grid view toggle. Grid mode keeps the top nav, search/filter row, and
+    // the bottom action row visible — only #btn-card-view is shown in the
+    // bottom row (CSS-driven via body.grid-mode), with shuffle/reset/grid-toggle
+    // hidden because they don't apply to grid view.
     const gridView = document.getElementById('grid-view');
     const gridContent = document.getElementById('grid-content');
     const gridBtn = document.getElementById('btn-grid-toggle');
-    const gridCloseBtn = document.getElementById('btn-grid-close');
+    const cardViewBtn = document.getElementById('btn-card-view');
 
     function openGrid() {
         gridContent.innerHTML = cards.map(c => `
             <div class="grid-card" data-id="${c.project.id}">
-                ${c.project.thumbnail ? `<img src="${c.project.thumbnail}" alt="">` : ''}
+                ${gridThumbMarkup(c.project.thumbnail)}
                 <div class="pad">
                     <h3>${escapeHtml(c.project.title)}</h3>
                     <p style="color:rgba(231,231,234,0.7); margin-top:0.4rem; font-size:0.88rem;">${escapeHtml(c.project.summary)}</p>
@@ -94,14 +105,18 @@ export function setupUi({ cards, cameraController, iframeOverlay }) {
             </div>
         `).join('');
         gridView.hidden = false;
+        document.body.classList.add('grid-mode');
+        // Re-apply current filter so grid items match 3D-table state.
+        applyFilter(activeFilter);
     }
 
     function closeGrid() {
         gridView.hidden = true;
+        document.body.classList.remove('grid-mode');
     }
 
     gridBtn.addEventListener('click', openGrid);
-    gridCloseBtn.addEventListener('click', closeGrid);
+    cardViewBtn.addEventListener('click', closeGrid);
 
     // Help — reopens the intro modal. Intro doubles as the help / orientation
     // content since dismissing it teaches the click-anywhere-off gesture.
@@ -113,10 +128,28 @@ export function setupUi({ cards, cameraController, iframeOverlay }) {
         if (ev.key === 'Escape') cameraController.unfocus();
         if (ev.key === ' ' || ev.key === 's') runShuffle();
     });
+
+    // Mobile / coarse-pointer default: open grid view immediately. The 3D card
+    // table is GPU- and bandwidth-heavy on mobile; grid view is the right
+    // default surface there. The user can still switch via the bottom-row
+    // "Card View" / "Grid View" buttons.
+    if (window.matchMedia('(pointer: coarse)').matches) {
+        openGrid();
+    }
 }
 
 function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
+}
+
+// Animated thumbnails are MP4 (imgur auto-transcoded). Use <video> for video
+// URLs, <img> otherwise. Empty when no thumbnail.
+function gridThumbMarkup(url) {
+    if (!url) return '';
+    if (/\.(mp4|webm|mov)(?:[?#]|$)/i.test(url)) {
+        return `<video src="${escapeHtml(url)}" muted loop autoplay playsinline preload="metadata"></video>`;
+    }
+    return `<img src="${escapeHtml(url)}" alt="">`;
 }
