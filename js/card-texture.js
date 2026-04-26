@@ -12,7 +12,7 @@ import { CARD_PX_W, CARD_PX_H } from './layout.js';
 
 const BG = '#18181c';
 const BORDER_COLOR = 'rgba(255,255,255,0.08)';
-const BORDER_RADIUS = 56;
+export const BORDER_RADIUS = 56;
 const BORDER_WIDTH = 4;
 
 const TITLE_COLOR = '#e7e7ea';

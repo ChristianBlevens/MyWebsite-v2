@@ -115,11 +115,14 @@ html, body {
 }
 #search:focus { border-color: var(--accent); }
 
+/* The filter-bar container is pointer-events:none so the gap/whitespace
+   between buttons doesn't intercept clicks meant for cards (3D table) or
+   grid items underneath. Only the actual button rects below absorb. */
 #filter-bar {
     display: flex;
     gap: 0.4rem;
     flex-wrap: wrap;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .filter-btn, #btn-shuffle, #btn-reset-camera, #btn-grid-toggle, #btn-card-view {
@@ -132,7 +135,12 @@ html, body {
     font-size: 0.85rem;
     backdrop-filter: blur(8px);
     transition: background 120ms, border-color 120ms;
+    pointer-events: auto;
+    /* Prevent press-and-drag on a button from selecting the button label. */
+    user-select: none;
+    -webkit-user-select: none;
 }
+.nav-btn { user-select: none; -webkit-user-select: none; }
 .filter-btn:hover, #btn-shuffle:hover, #btn-reset-camera:hover,
 #btn-grid-toggle:hover, #btn-card-view:hover {
     border-color: var(--accent);
@@ -147,6 +155,10 @@ body.grid-mode #btn-reset-camera,
 body.grid-mode #btn-grid-toggle { display: none; }
 body.grid-mode #search,
 body.grid-mode #filter-bar { /* keep filters/search visible by default */ }
+/* Iframe stages float above the grid (z:15/16 > grid z:5). Hide them in
+   grid mode so any in-flight expanded iframe doesn't poke through. */
+body.grid-mode #iframe-stage,
+body.grid-mode #iframe-toggle-stage { display: none; }
 .filter-btn.active {
     background: var(--accent-dim);
     border-color: var(--accent);
@@ -652,12 +664,82 @@ body.grid-mode #filter-bar { /* keep filters/search visible by default */ }
     cursor: pointer;
     transition: opacity 250ms;
 }
-#grid-content .grid-card.filtered-out { opacity: 0.25; }
+/* Grid view: filter removes non-matching items from layout entirely so
+   matching projects reflow to the top — no scroll-past-faded-cards UX.
+   (3D table keeps the opacity-dim rule for .card.filtered-out — cards are
+   physical bodies on the table and can't disappear without breaking the
+   simulation metaphor.) */
+#grid-content .grid-card.filtered-out { display: none; }
 #grid-content .grid-card img,
 #grid-content .grid-card video {
     width: 100%;
-    height: 160px;
+    height: 220px;
     object-fit: cover;
     display: block;
 }
-#grid-content .grid-card .pad { padding: 1rem; }
+#grid-content .grid-card .pad {
+    padding: 1.1rem 1.2rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+#grid-content .grid-card h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+#grid-content .grid-card .grid-summary {
+    color: rgba(231, 231, 234, 0.7);
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+#grid-content .grid-card .grid-description {
+    color: rgba(231, 231, 234, 0.85);
+    font-size: 0.86rem;
+    line-height: 1.55;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 0.7rem;
+}
+#grid-content .grid-card .grid-description p { margin-bottom: 0.6rem; }
+#grid-content .grid-card .grid-description p:last-child { margin-bottom: 0; }
+#grid-content .grid-card .grid-description ul,
+#grid-content .grid-card .grid-description ol { padding-left: 1.2rem; margin-bottom: 0.6rem; }
+#grid-content .grid-card .grid-description li { margin-bottom: 0.2rem; }
+#grid-content .grid-card .grid-description code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 0 0.3em;
+    border-radius: 3px;
+    font-size: 0.92em;
+}
+#grid-content .grid-card .grid-description a { color: var(--accent); }
+#grid-content .grid-card .grid-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+#grid-content .grid-card .grid-tag {
+    background: var(--tag-bg);
+    color: var(--tag-fg);
+    font-size: 0.72rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+#grid-content .grid-card .grid-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.2rem;
+}
+#grid-content .grid-card .grid-link {
+    display: inline-block;
+    padding: 0.45rem 0.9rem;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    transition: background 120ms;
+}
+#grid-content .grid-card .grid-link:hover { background: var(--accent); }

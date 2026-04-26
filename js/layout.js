@@ -43,7 +43,7 @@ const CAMERA_HEIGHT_FACTOR = REFERENCE_CAMERA_HEIGHT * REFERENCE_ASPECT;
 
 export const CARD_W = CARD_CELLS_W * CELL_SIZE;
 export const CARD_H = CARD_CELLS_H * CELL_SIZE;
-export const CARD_T = 0.15;
+export const CARD_T = 0.3;
 
 // Card DOM authored at high pixel resolution then downscaled by CSS_BASE_SCALE
 // in the CSS3D matrix so focus zoom stays sharp without re-rasterizing. PX_PER_UNIT

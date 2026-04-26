@@ -80,6 +80,15 @@ function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 1 / 30);
 
+    // While in grid view the entire 3D scene is hidden behind the grid
+    // (z:5 > stage z:1/2). Skip physics, card updates, both renderers, and
+    // the iframe overlay — that's where the per-frame CPU cost lives. The
+    // rAF loop keeps running so we resume cleanly the moment grid closes;
+    // the clock keeps ticking so dt stays small and physics doesn't get a
+    // multi-second step on resume. Videos are paused/resumed by ui.js
+    // open/closeGrid; iframe DOM is hidden in CSS via body.grid-mode.
+    if (document.body.classList.contains('grid-mode')) return;
+
     world.step();
 
     for (const card of cards) card.update(dt);

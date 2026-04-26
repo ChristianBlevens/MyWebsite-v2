@@ -94,18 +94,58 @@ export function setupUi({ cards, cameraController, iframeOverlay }) {
     const gridBtn = document.getElementById('btn-grid-toggle');
     const cardViewBtn = document.getElementById('btn-card-view');
 
+    // Keep #grid-view's top padding synced to the bottom of the search/filter
+    // row. When the viewport narrows, #filter-bar wraps onto more rows and
+    // .ui-top grows taller — without this, those wrapped rows would float
+    // over the top grid cards' titles. ResizeObserver catches reflow caused
+    // by viewport-width changes (where the resize event also fires) AND any
+    // future content changes that grow the row.
+    const uiTop = document.querySelector('.ui-top');
+    const syncGridTop = () => {
+        const bottom = uiTop.getBoundingClientRect().bottom;
+        gridView.style.paddingTop = (bottom + 16) + 'px';
+    };
+    new ResizeObserver(syncGridTop).observe(uiTop);
+    window.addEventListener('resize', syncGridTop);
+    syncGridTop();
+
     function openGrid() {
-        gridContent.innerHTML = cards.map(c => `
-            <div class="grid-card" data-id="${c.project.id}">
-                ${gridThumbMarkup(c.project.thumbnail)}
-                <div class="pad">
-                    <h3>${escapeHtml(c.project.title)}</h3>
-                    <p style="color:rgba(231,231,234,0.7); margin-top:0.4rem; font-size:0.88rem;">${escapeHtml(c.project.summary)}</p>
+        // markdown-it is loaded globally via CDN tag in index.html (used by
+        // card.js back-face). html:false sanitizes inline HTML in source —
+        // markdown-it itself produces safe HTML, but be defensive against
+        // tags in author-written description strings.
+        const md = window.markdownit ? window.markdownit({ html: false, linkify: true }) : null;
+        gridContent.innerHTML = cards.map(c => {
+            const p = c.project;
+            const descHtml = md && p.description ? md.render(p.description) : '';
+            const tags = (p.tags || []).map(t =>
+                `<span class="grid-tag">${escapeHtml(t)}</span>`).join('');
+            const links = [
+                p.liveUrl ? `<a class="grid-link grid-link-live" href="${escapeHtml(p.liveUrl)}" target="_blank" rel="noopener">Open Live</a>` : '',
+                p.github  ? `<a class="grid-link grid-link-github" href="${escapeHtml(p.github)}" target="_blank" rel="noopener">GitHub</a>` : '',
+            ].join('');
+            return `
+                <div class="grid-card" data-id="${p.id}">
+                    ${gridThumbMarkup(p.thumbnail)}
+                    <div class="pad">
+                        <h3>${escapeHtml(p.title)}</h3>
+                        <p class="grid-summary">${escapeHtml(p.summary)}</p>
+                        ${descHtml ? `<div class="grid-description">${descHtml}</div>` : ''}
+                        ${tags ? `<div class="grid-tags">${tags}</div>` : ''}
+                        ${links ? `<div class="grid-links">${links}</div>` : ''}
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
         gridView.hidden = false;
         document.body.classList.add('grid-mode');
+        // Stop the 3D-card video elements while grid mode is active. The
+        // animate loop is also bailing early (main.js), so VideoTextures
+        // wouldn't be uploaded anyway, but the HTMLVideoElement itself keeps
+        // decoding silently — pausing kills that decoder cost too. Grid-card
+        // <video> elements (a separate set of DOM nodes inside #grid-content)
+        // keep playing as the user expects.
+        for (const c of cards) c.frontVideo?.pause();
         // Re-apply current filter so grid items match 3D-table state.
         applyFilter(activeFilter);
     }
@@ -113,6 +153,14 @@ export function setupUi({ cards, cameraController, iframeOverlay }) {
     function closeGrid() {
         gridView.hidden = true;
         document.body.classList.remove('grid-mode');
+        // Resume any 3D-card videos whose card is currently in textured
+        // representation (the css3d representation pauses its own video via
+        // _setRepresentation; don't fight that here).
+        for (const c of cards) {
+            if (c.representation === 'textured') {
+                c.frontVideo?.play().catch(() => {});
+            }
+        }
     }
 
     gridBtn.addEventListener('click', openGrid);

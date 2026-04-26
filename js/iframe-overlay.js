@@ -54,8 +54,13 @@ export class IframeOverlay {
     }
 
     registerCard(card) {
-        // Stored implicitly via cardIframes once iframe is created. Nothing to
-        // do at registration time — iframe is built lazily on first expand.
+        // Pre-create the toggle host for iframe-capable cards so that the
+        // first time the user expands one, the host is already in the DOM
+        // (display:none) and the next animate() frame can position+show it
+        // without a one-frame click→show gap that briefly leaves no toggle
+        // visible. Iframes themselves are still built lazily on first expand
+        // (network cost). Non-iframe cards never get a toggle host at all.
+        if (card.project.iframeUrl) this._ensureToggle(card);
     }
 
     _ensureIframe(card) {
@@ -172,18 +177,18 @@ export class IframeOverlay {
             const visible = card.expanded && card.faceUp;
             if (!visible) { iframe.style.display = 'none'; continue; }
             const dst = this._projectCardCorners(card, camera);
-            this._applyMatrix3dTransform(iframe, dst);
-            iframe.style.display = '';
+            const ok = this._applyMatrix3dTransform(iframe, dst);
+            iframe.style.display = ok ? '' : 'none';
             iframe.style.pointerEvents =
-                (!this.modalActive && card === this.focusedCard) ? 'auto' : 'none';
+                (ok && !this.modalActive && card === this.focusedCard) ? 'auto' : 'none';
         }
 
         for (const [card, host] of this.cardToggles) {
             const visible = card.expanded && card.faceUp;
             if (!visible) { host.style.display = 'none'; continue; }
             const dst = this._projectCardCorners(card, camera);
-            this._applyMatrix3dTransform(host, dst);
-            host.style.display = '';
+            const ok = this._applyMatrix3dTransform(host, dst);
+            host.style.display = ok ? '' : 'none';
         }
     }
 
@@ -217,8 +222,16 @@ export class IframeOverlay {
         return dst;
     }
 
+    // Returns true on a clean transform write, false if the projection was
+    // degenerate (caller should treat the element as not-visible this frame).
     _applyMatrix3dTransform(el, dstCorners) {
         const H = general2DProjection(this._srcCorners, dstCorners);
+        // Degenerate-projection guard. H[8] approaches zero when the four
+        // destination corners are collinear (card edge-on, viewed from a
+        // direction that flattens it on screen). 1/H[8] would then be
+        // Infinity/NaN, producing a malformed matrix3d() string the browser
+        // can't apply — observed as a one-frame disappearance of the toggle.
+        if (!H[8] || Math.abs(H[8]) < 1e-9) return false;
         // Normalize so H[2][2] = 1 (helps with floating-point precision).
         const k = 1 / H[8];
         for (let i = 0; i < 9; i++) H[i] *= k;
@@ -234,6 +247,7 @@ export class IframeOverlay {
             `${H[1]},${H[4]},0,${H[7]},` +
             `0,0,1,0,` +
             `${H[2]},${H[5]},0,${H[8]})`;
+        return true;
     }
 }
 

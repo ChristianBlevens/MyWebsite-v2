@@ -16,6 +16,7 @@ import {
     getGenericBackCanvas,
     TOGGLE_RECT,
     TOP_REGION_FRACTION,
+    BORDER_RADIUS as CANVAS_BORDER_RADIUS,
 } from './card-texture.js';
 
 // Card dimensions and authoring resolution come from layout.js (derived from
@@ -52,6 +53,38 @@ function thumbnailMarkup(url) {
         return `<video class="card-thumbnail" src="${escapeHtml(url)}" muted loop autoplay playsinline preload="metadata"></video>`;
     }
     return `<img class="card-thumbnail" src="${escapeHtml(url)}" alt="">`;
+}
+
+// Geometry for the video plane at the top of a video-thumbnail card. Top
+// corners are rounded to match the canvas-clipped border radius on the rest
+// of the card faces; bottom corners are square (they butt up against the
+// text region below). Custom UVs map vertex (x,y) to (0..1, 0..1) over the
+// shape's bounding box so the VideoTexture stretches exactly across it.
+function buildRoundedTopPlane(width, height, radius) {
+    const w2 = width / 2;
+    const h2 = height / 2;
+    const r = Math.min(radius, Math.min(width, height) / 2);
+
+    const shape = new THREE.Shape();
+    shape.moveTo(-w2 + r, +h2);
+    shape.lineTo(+w2 - r, +h2);
+    shape.quadraticCurveTo(+w2, +h2, +w2, +h2 - r);
+    shape.lineTo(+w2, -h2);
+    shape.lineTo(-w2, -h2);
+    shape.lineTo(-w2, +h2 - r);
+    shape.quadraticCurveTo(-w2, +h2, -w2 + r, +h2);
+
+    const geom = new THREE.ShapeGeometry(shape);
+    // ShapeGeometry uses raw vertex coords as UVs by default — remap to
+    // [0..1] over the bbox so the texture stretches like a PlaneGeometry.
+    const pos = geom.getAttribute('position');
+    const uvs = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+        uvs[i * 2]     = (pos.getX(i) + w2) / width;
+        uvs[i * 2 + 1] = (pos.getY(i) + h2) / height;
+    }
+    geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    return geom;
 }
 
 export class Card {
@@ -106,14 +139,19 @@ export class Card {
 
         // CSS3DObjects: one per face, positioned on either side of the card body.
         // Hidden initially — only shown when representation === 'css3d'.
+        // Faces are INSET inside the body (at body-top - 0.001 and
+        // body-bottom + 0.001) rather than extended outside it. The textured
+        // representation (below) shares this convention so the back mesh
+        // never dips below the floor when the card rests on it (which would
+        // otherwise cause depth-buffer fighting with the table mesh).
         this.frontObj = new CSS3DObject(this.frontEl);
-        this.frontObj.position.set(0, +CARD_T / 2 + 0.002, 0);
+        this.frontObj.position.set(0, +CARD_T / 2 - 0.001, 0);
         this.frontObj.rotation.x = -Math.PI / 2;
         this.frontObj.scale.setScalar(CSS_BASE_SCALE);
         this.frontObj.visible = false;
 
         this.backObj = new CSS3DObject(this.backEl);
-        this.backObj.position.set(0, -CARD_T / 2 - 0.002, 0);
+        this.backObj.position.set(0, -CARD_T / 2 + 0.001, 0);
         this.backObj.rotation.x = +Math.PI / 2;
         this.backObj.scale.setScalar(CSS_BASE_SCALE);
         this.backObj.visible = false;
@@ -173,10 +211,16 @@ export class Card {
         // parented to a stable top-level container. The card just shows the
         // thumbnail when compact; when expanded, the overlay's iframe sits
         // visually on top of this empty card-top.
+        // Toggle pill is only meaningful on cards with a live iframe (it
+        // expands the card so the iframe is usable). Non-iframe cards omit it
+        // entirely — there's nothing to toggle to.
+        const toggleHtml = this.project.iframeUrl
+            ? `<div class="card-toggle" data-action="toggle" title="Toggle live view">
+                   <div class="card-toggle-knob"></div>
+               </div>`
+            : '';
         el.innerHTML = `
-            <div class="card-toggle" data-action="toggle" title="Toggle live view">
-                <div class="card-toggle-knob"></div>
-            </div>
+            ${toggleHtml}
             <div class="card-top">
                 ${thumbnailMarkup(this.project.thumbnail)}
             </div>
@@ -198,10 +242,13 @@ export class Card {
         el.style.height = CARD_PX_H + 'px';
         el.dataset.projectId = this.project.id;
         el.dataset.face = 'back';
+        const toggleHtml = this.project.iframeUrl
+            ? `<div class="card-toggle" data-action="toggle" title="Toggle live view">
+                   <div class="card-toggle-knob"></div>
+               </div>`
+            : '';
         el.innerHTML = `
-            <div class="card-toggle" data-action="toggle" title="Toggle live view">
-                <div class="card-toggle-knob"></div>
-            </div>
+            ${toggleHtml}
             <h3 class="card-title">${escapeHtml(this.project.title)}</h3>
             <div class="card-description"></div>
             <div class="card-tags">
@@ -260,13 +307,17 @@ export class Card {
                 map: videoTex, side: THREE.FrontSide,
             });
             const topH = CARD_H * TOP_REGION_FRACTION;
-            const topPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(CARD_W, topH), videoMat);
+            // Convert canvas-pixel border radius → world units so the rounded
+            // top corners line up with the canvas-clipped rounded shape on
+            // the textPlane (and on the static-card / back textures).
+            const cornerR = (CANVAS_BORDER_RADIUS / CARD_PX_W) * CARD_W;
+            const topGeom = buildRoundedTopPlane(CARD_W, topH, cornerR);
+            const topPlane = new THREE.Mesh(topGeom, videoMat);
             topPlane.rotation.x = -Math.PI / 2;
             // Plane geometry's local +Y maps (after rotation.x=-π/2) to pivot -Z.
             // The top-of-card sits at pivot Z = -CARD_H/2; centering the
             // video plane there means its center is at Z = -CARD_H/2 + topH/2.
-            topPlane.position.set(0, +CARD_T / 2 + 0.001, -CARD_H / 2 + topH / 2);
+            topPlane.position.set(0, +CARD_T / 2 - 0.003, -CARD_H / 2 + topH / 2);
             this.frontMeshes.push(topPlane);
 
             // Text region: full-card-sized canvas, transparent above the text
@@ -278,12 +329,13 @@ export class Card {
             const textTex = new THREE.CanvasTexture(textCanvas);
             textTex.colorSpace = THREE.SRGBColorSpace;
             const textMat = new THREE.MeshBasicMaterial({
-                map: textTex, transparent: true, side: THREE.FrontSide,
+                map: textTex, transparent: true, alphaTest: 0.01,
+                side: THREE.FrontSide,
             });
             const textPlane = new THREE.Mesh(
                 new THREE.PlaneGeometry(CARD_W, CARD_H), textMat);
             textPlane.rotation.x = -Math.PI / 2;
-            textPlane.position.set(0, +CARD_T / 2 + 0.002, 0);
+            textPlane.position.set(0, +CARD_T / 2 - 0.002, 0);
             this.frontMeshes.push(textPlane);
 
             // Toggle pill overlay (only for cards with iframeUrl). Separate
@@ -293,12 +345,13 @@ export class Card {
                 const pillTex = new THREE.CanvasTexture(pillCanvas);
                 pillTex.colorSpace = THREE.SRGBColorSpace;
                 const pillMat = new THREE.MeshBasicMaterial({
-                    map: pillTex, transparent: true, side: THREE.FrontSide,
+                    map: pillTex, transparent: true, alphaTest: 0.01,
+                    side: THREE.FrontSide,
                 });
                 const pillPlane = new THREE.Mesh(
                     new THREE.PlaneGeometry(CARD_W, CARD_H), pillMat);
                 pillPlane.rotation.x = -Math.PI / 2;
-                pillPlane.position.set(0, +CARD_T / 2 + 0.003, 0);
+                pillPlane.position.set(0, +CARD_T / 2 - 0.001, 0);
                 this.frontMeshes.push(pillPlane);
             }
         } else {
@@ -309,12 +362,13 @@ export class Card {
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
             const mat = new THREE.MeshBasicMaterial({
-                map: tex, side: THREE.FrontSide,
+                map: tex, transparent: true, alphaTest: 0.01,
+                side: THREE.FrontSide,
             });
             const plane = new THREE.Mesh(
                 new THREE.PlaneGeometry(CARD_W, CARD_H), mat);
             plane.rotation.x = -Math.PI / 2;
-            plane.position.set(0, +CARD_T / 2 + 0.002, 0);
+            plane.position.set(0, +CARD_T / 2 - 0.002, 0);
             this.frontMeshes.push(plane);
 
             // Async thumbnail load: when the image arrives, redraw the canvas
@@ -345,12 +399,13 @@ export class Card {
             Card._sharedBackTexture = tex;
         }
         const mat = new THREE.MeshBasicMaterial({
-            map: Card._sharedBackTexture, side: THREE.FrontSide,
+            map: Card._sharedBackTexture, transparent: true, alphaTest: 0.01,
+            side: THREE.FrontSide,
         });
         const plane = new THREE.Mesh(
             new THREE.PlaneGeometry(CARD_W, CARD_H), mat);
         plane.rotation.x = +Math.PI / 2;
-        plane.position.set(0, -CARD_T / 2 - 0.002, 0);
+        plane.position.set(0, -CARD_T / 2 + 0.002, 0);
 
         this.backGroup = new THREE.Group();
         this.backGroup.add(plane);

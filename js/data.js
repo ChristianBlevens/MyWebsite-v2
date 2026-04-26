@@ -9,8 +9,8 @@ export const projects = [
         title: 'Christmas Lights AI Demo',
         summary: 'Draw light strands on a photo and watch AI bring them to life.',
         thumbnail: 'https://i.imgur.com/m0Wfsrh.png',
-        iframeUrl: 'https://christianblevens.github.io/AddSplineToPictureThenAIWebApp/',
-        liveUrl: 'https://christianblevens.github.io/AddSplineToPictureThenAIWebApp/',
+        iframeUrl: '/christmas-lights/',
+        liveUrl: '/christmas-lights/',
         tags: ['AI', 'Web App', 'Tool'],
         description: [
             '- Spline-based light placement with depth-mapped guidance',
