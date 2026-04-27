@@ -585,26 +585,70 @@ body.grid-mode #iframe-toggle-stage { display: none; }
     background: var(--accent-dim);
     border: 1px solid var(--accent);
     color: var(--fg);
-    text-decoration: none;
+    cursor: pointer;
     padding: 0.45rem 0.9rem;
     border-radius: 6px;
     font-size: 0.85rem;
+    font: inherit;
 }
 .resume-download:hover { background: var(--accent); }
-.resume-frame-wrap {
-    width: 100%;
-    border: 1px solid var(--ui-border);
-    border-radius: 8px;
-    overflow: hidden;
-    background: #fff;
+
+/* Markdown-rendered resume body. Reflows naturally on mobile because it's
+   plain HTML, not a fixed-page iframe. */
+.resume-rendered {
+    line-height: 1.5;
+    color: var(--fg);
 }
-/* US Letter aspect (8.5 × 11). Iframe renders the doc natively at full
-   container width — no CSS scaling, no blur. */
-.resume-frame {
-    width: 100%;
-    aspect-ratio: 8.5 / 11;
-    border: none;
-    display: block;
+.resume-rendered h1 { font-size: 1.6rem; margin: 0 0 0.4rem; }
+.resume-rendered h2 {
+    font-size: 1.15rem;
+    margin: 1.2rem 0 0.4rem;
+    padding-bottom: 0.2rem;
+    border-bottom: 1px solid var(--ui-border);
+}
+.resume-rendered h3 { font-size: 1rem; margin: 0.8rem 0 0.2rem; }
+.resume-rendered p { margin: 0.4rem 0; }
+.resume-rendered ul, .resume-rendered ol { margin: 0.4rem 0 0.6rem 1.2rem; }
+.resume-rendered li { margin: 0.15rem 0; }
+.resume-rendered a { color: var(--accent); }
+
+/* Hidden by default; only used as a print target. */
+#print-root { display: none; }
+
+@media print {
+    /* Hide every direct child of body except the print-root clone. */
+    body.printing-resume > *:not(#print-root) { display: none !important; }
+    body.printing-resume #print-root {
+        display: block !important;
+        color: #000;
+        background: #fff;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 11pt;
+        line-height: 1.4;
+    }
+    body.printing-resume #print-root h1 {
+        font-size: 20pt;
+        margin: 0 0 0.4em;
+    }
+    body.printing-resume #print-root h2 {
+        font-size: 13pt;
+        margin: 0.9em 0 0.3em;
+        padding-bottom: 0.1em;
+        border-bottom: 1px solid #888;
+    }
+    body.printing-resume #print-root h3 {
+        font-size: 11.5pt;
+        margin: 0.7em 0 0.15em;
+    }
+    body.printing-resume #print-root p { margin: 0.3em 0; }
+    body.printing-resume #print-root ul,
+    body.printing-resume #print-root ol { margin: 0.3em 0 0.6em 1.2em; }
+    body.printing-resume #print-root li { margin: 0.1em 0; }
+    body.printing-resume #print-root a {
+        color: #000;
+        text-decoration: none;
+    }
+    @page { margin: 0.75in; }
 }
 
 /* Mobile pass: nav wraps, modal padding tightens, controls cheat collapses. */
