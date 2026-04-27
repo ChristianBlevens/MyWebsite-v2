@@ -16,6 +16,8 @@
 // every side). The grid is offset by half a cell in both X and Z so that
 // the yellow zone's boundaries never coincide with grid lines.
 
+import { projects } from './data.js';
+
 const FOV_DEG = 45;
 const FOV_RAD = FOV_DEG * Math.PI / 180;
 
@@ -41,8 +43,24 @@ export const CELL_SIZE = REFERENCE_VISIBLE_LONG / (CELLS_ON_LONG_AXIS + 2 * BUFF
 // Derived so that, at aspect = REFERENCE_ASPECT, h = REFERENCE_CAMERA_HEIGHT.
 const CAMERA_HEIGHT_FACTOR = REFERENCE_CAMERA_HEIGHT * REFERENCE_ASPECT;
 
-export const CARD_W = CARD_CELLS_W * CELL_SIZE;
-export const CARD_H = CARD_CELLS_H * CELL_SIZE;
+// Compact card size scales with project count. REFERENCE_COUNT is the
+// project count this scaling was tuned against; at that count, COMPACT_SCALE
+// equals REFERENCE_SCALE. sqrt scaling means each card's world area tracks
+// 1/N (the natural packing relationship), so adding more cards shrinks them
+// and removing cards grows them. Bounded so extreme counts can't produce
+// absurd sizes.
+//
+// Expanded size is intentionally NOT scaled by this — card.js compensates
+// by setting EXPANDED_SCALE to a value that cancels COMPACT_SCALE out, so
+// the absolute world size of an expanded card is independent of N.
+const REFERENCE_COUNT = 38;
+const REFERENCE_SCALE = 0.85;
+export const COMPACT_SCALE = Math.min(1.5, Math.max(0.5,
+    REFERENCE_SCALE * Math.sqrt(REFERENCE_COUNT / Math.max(1, projects.length))
+));
+
+export const CARD_W = CARD_CELLS_W * CELL_SIZE * COMPACT_SCALE;
+export const CARD_H = CARD_CELLS_H * CELL_SIZE * COMPACT_SCALE;
 export const CARD_T = 0.3;
 
 // Card DOM authored at high pixel resolution then downscaled by CSS_BASE_SCALE

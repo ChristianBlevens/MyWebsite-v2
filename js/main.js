@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { createScene } from './scene.js';
-import { createPhysicsWorld } from './physics.js';
+import { createPhysicsWorld, placeCardsOnTable } from './physics.js';
 import { Card } from './card.js';
 import { CameraController } from './camera-controller.js';
 import { InputController } from './input.js';
@@ -26,6 +26,7 @@ const cards = projects.map(p => {
     scene.add(card.pivot);
     return card;
 });
+placeCardsOnTable(cards);
 
 const cameraController = new CameraController(camera, iframeOverlay);
 const inputController = new InputController({

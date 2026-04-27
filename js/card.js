@@ -7,7 +7,7 @@ import {
     CARD_W, CARD_H, CARD_T,
     CARD_PX_W, CARD_PX_H,
     CSS_BASE_SCALE,
-    CELL_SIZE,
+    COMPACT_SCALE,
 } from './layout.js';
 import {
     renderFrontStaticCanvas,
@@ -24,7 +24,13 @@ import {
 // (e.g. iframe-overlay.js) keep working.
 export { CARD_W, CARD_H, CARD_T, CARD_PX_W, CARD_PX_H };
 
-export const EXPANDED_SCALE = 2.2;
+// Compact card size shrinks with project count (see layout.js COMPACT_SCALE).
+// Expanded cards should stay the same absolute world size regardless of N,
+// so the expand multiplier divides out COMPACT_SCALE: expanded world size =
+// CARD_W * EXPANDED_SCALE = CARD_CELLS_W * CELL_SIZE * COMPACT_SCALE *
+// (BASE_EXPAND / COMPACT_SCALE) = CARD_CELLS_W * CELL_SIZE * BASE_EXPAND.
+const BASE_EXPAND = 2.2;
+export const EXPANDED_SCALE = BASE_EXPAND / COMPACT_SCALE;
 
 // Scratch objects reused across updates to avoid per-frame allocation.
 const _flipAxis = new THREE.Vector3(1, 0, 0);
@@ -186,18 +192,10 @@ export class Card {
 
         this.iframeOverlay?.registerCard(this);
 
-        // Random starting pose on the table — bounded to the play area minus
-        // a small margin so cards don't spawn flush against a wall.
-        const margin = CELL_SIZE * 1.5;
-        const startX = (Math.random() - 0.5) * Math.max(0.1, Layout.playW - margin * 2);
-        const startZ = (Math.random() - 0.5) * Math.max(0.1, Layout.playD - margin * 2);
-        const startYaw = (Math.random() - 0.5) * 0.8;
-        this.body.setTranslation({ x: startX, y: CARD_T / 2 + 0.05, z: startZ }, true);
-        const halfYaw = startYaw / 2;
-        this.body.setRotation(
-            { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) },
-            true
-        );
+        // Initial pose is set by placeCardsOnTable() in physics.js, called
+        // once after all cards have been constructed. Each card needs to know
+        // about the others' positions to avoid overlap, so placement is a
+        // batch operation that lives outside the constructor.
     }
 
     _buildFrontEl() {
