@@ -576,6 +576,7 @@ body.grid-mode #iframe-toggle-stage { display: none; }
 .comments-host { min-height: 320px; }
 
 /* Resume frame fills the modal. */
+.modal-panel:has(.resume-content) { background: rgba(20, 20, 24, 0.92); }
 .resume-content { padding: 1.2rem; width: min(720px, 92vw); }
 .resume-header {
     display: flex; align-items: center; justify-content: space-between;
