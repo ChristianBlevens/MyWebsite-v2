@@ -56,7 +56,7 @@ function isVideoUrl(url) {
 function thumbnailMarkup(url) {
     if (!url) return '';
     if (isVideoUrl(url)) {
-        return `<video class="card-thumbnail" src="${escapeHtml(url)}" muted loop autoplay playsinline preload="metadata"></video>`;
+        return `<video class="card-thumbnail" src="${escapeHtml(url)}" muted loop playsinline preload="metadata"></video>`;
     }
     return `<img class="card-thumbnail" src="${escapeHtml(url)}" alt="">`;
 }
@@ -288,15 +288,11 @@ export class Card {
             video.src = project.thumbnail;
             video.muted = true;
             video.loop = true;
-            video.autoplay = true;
             video.playsInline = true;
             video.crossOrigin = 'anonymous';
-            video.preload = 'auto';
-            // Mobile autoplay needs the muted+playsinline combo plus a play()
-            // call. The promise rejection (e.g., suspended audio context) is
-            // silently swallowed; user can resume by interacting with the page.
-            video.play().catch(() => {});
+            video.preload = 'metadata';
             this.frontVideo = video;
+            this._videoEverPlayed = false;
 
             const videoTex = new THREE.VideoTexture(video);
             videoTex.colorSpace = THREE.SRGBColorSpace;
@@ -421,17 +417,25 @@ export class Card {
         if (this.backGroup) this.backGroup.visible = !css3d;
         this.frontObj.visible = css3d;
         this.backObj.visible = css3d;
-        // Pause the video element when CSS3D takes over — saves the decoder
-        // doing work for a texture that isn't being sampled.
         if (this.frontVideo) {
-            if (css3d) this.frontVideo.pause();
-            else this.frontVideo.play().catch(() => {});
+            if (css3d) {
+                if (!this._videoEverPlayed) {
+                    // First focus: start the full download and play in the
+                    // background so the texture is animated on unfocus.
+                    this._videoEverPlayed = true;
+                    this.frontVideo.play().catch(() => {});
+                } else {
+                    // Already started: pause while the texture isn't sampled.
+                    this.frontVideo.pause();
+                }
+            } else {
+                // Returning to textured mode: resume if ever started.
+                if (this._videoEverPlayed) this.frontVideo.play().catch(() => {});
+            }
         }
-        // Symmetric handling for the live-DOM <video> shown in css3d mode.
-        // Built with autoplay, but the element is display:none until the
-        // CSS3DObject becomes visible — Chromium's autoplay policy defers
-        // playback in that state and does not retry on visibility flip,
-        // leaving the video frozen on its first decoded frame.
+        // DOM video in css3d mode: play on show, pause on hide. No autoplay
+        // attribute — this explicit call handles Chromium's deferred-autoplay
+        // policy for elements that were display:none at parse time.
         const domVideo = this.frontEl.querySelector('video.card-thumbnail');
         if (domVideo) {
             if (css3d) domVideo.play().catch(() => {});
