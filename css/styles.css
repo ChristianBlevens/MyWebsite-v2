@@ -788,3 +788,122 @@ body.grid-mode #iframe-toggle-stage { display: none; }
     transition: background 120ms;
 }
 #grid-content .grid-card .grid-link:hover { background: var(--accent); }
+
+/* ── Standalone resume page (#resume hash) ──────────────────────────────────
+   Entire body is this page; no 3D, no nav, no grid. */
+#resume-page {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    overflow: hidden;
+}
+
+#resume-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1.5rem;
+    background: rgba(20, 20, 24, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--ui-border);
+    flex-shrink: 0;
+}
+
+#resume-page-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+#resume-pdf-btn {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--fg);
+    padding: 0.45rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font: inherit;
+    cursor: pointer;
+    transition: background 120ms;
+}
+#resume-pdf-btn:hover { background: var(--accent); }
+
+#resume-page-body {
+    flex: 1;
+    overflow: auto;
+    padding: 2rem;
+}
+
+#resume-page-rendered {
+    max-width: 780px;
+    margin: 0 auto;
+}
+
+/* Fixed bottom-right button to return to the portfolio grid */
+#resume-portfolio-btn {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--fg);
+    padding: 0.7rem 1.2rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background 120ms;
+    z-index: 110;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+#resume-portfolio-btn:hover { background: var(--accent); color: #fff; }
+
+@media (max-width: 560px) {
+    #resume-page-header { padding: 0.6rem 1rem; }
+    #resume-page-body { padding: 1.2rem; }
+    #resume-portfolio-btn { bottom: 1rem; right: 1rem; font-size: 0.82rem; padding: 0.55rem 0.9rem; }
+}
+
+/* Print: resume-page mode. Header chrome and portfolio button are hidden;
+   the body content prints with traditional serif typography. */
+@media print {
+    body.resume-page #resume-page-header,
+    body.resume-page #resume-portfolio-btn { display: none !important; }
+    body.resume-page #resume-page {
+        position: static !important;
+        overflow: visible !important;
+        background: #fff !important;
+    }
+    body.resume-page #resume-page-body {
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+    body.resume-page #resume-page-rendered {
+        max-width: 100% !important;
+        color: #000;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 11pt;
+        line-height: 1.4;
+    }
+    body.resume-page #resume-page-rendered h1 { font-size: 20pt; margin: 0 0 0.4em; }
+    body.resume-page #resume-page-rendered h2 {
+        font-size: 13pt;
+        margin: 0.9em 0 0.3em;
+        padding-bottom: 0.1em;
+        border-bottom: 1px solid #888;
+    }
+    body.resume-page #resume-page-rendered h3 { font-size: 11.5pt; margin: 0.7em 0 0.15em; }
+    body.resume-page #resume-page-rendered p { margin: 0.3em 0; }
+    body.resume-page #resume-page-rendered ul,
+    body.resume-page #resume-page-rendered ol { margin: 0.3em 0 0.6em 1.2em; }
+    body.resume-page #resume-page-rendered li { margin: 0.1em 0; }
+    body.resume-page #resume-page-rendered a { color: #000; text-decoration: none; }
+    body.resume-page #resume-page-rendered em { font-style: italic; }
+}
