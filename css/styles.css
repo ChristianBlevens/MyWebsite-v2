@@ -591,65 +591,18 @@ body.grid-mode #iframe-toggle-stage { display: none; }
     border-radius: 6px;
     font-size: 0.85rem;
     font: inherit;
+    text-decoration: none;
+    display: inline-block;
 }
 .resume-download:hover { background: var(--accent); }
 
-/* Markdown-rendered resume body. Reflows naturally on mobile because it's
-   plain HTML, not a fixed-page iframe. */
-.resume-rendered {
-    line-height: 1.5;
-    color: var(--fg);
-}
-.resume-rendered h1 { font-size: 1.6rem; margin: 0 0 0.4rem; }
-.resume-rendered h2 {
-    font-size: 1.15rem;
-    margin: 1.2rem 0 0.4rem;
-    padding-bottom: 0.2rem;
-    border-bottom: 1px solid var(--ui-border);
-}
-.resume-rendered h3 { font-size: 1rem; margin: 0.8rem 0 0.2rem; }
-.resume-rendered p { margin: 0.4rem 0; }
-.resume-rendered ul, .resume-rendered ol { margin: 0.4rem 0 0.6rem 1.2rem; }
-.resume-rendered li { margin: 0.15rem 0; }
-.resume-rendered a { color: var(--accent); }
-
-/* Hidden by default; only used as a print target. */
-#print-root { display: none; }
-
-@media print {
-    /* Hide every direct child of body except the print-root clone. */
-    body.printing-resume > *:not(#print-root) { display: none !important; }
-    body.printing-resume #print-root {
-        display: block !important;
-        color: #000;
-        background: #fff;
-        font-family: Georgia, "Times New Roman", serif;
-        font-size: 11pt;
-        line-height: 1.4;
-    }
-    body.printing-resume #print-root h1 {
-        font-size: 20pt;
-        margin: 0 0 0.4em;
-    }
-    body.printing-resume #print-root h2 {
-        font-size: 13pt;
-        margin: 0.9em 0 0.3em;
-        padding-bottom: 0.1em;
-        border-bottom: 1px solid #888;
-    }
-    body.printing-resume #print-root h3 {
-        font-size: 11.5pt;
-        margin: 0.7em 0 0.15em;
-    }
-    body.printing-resume #print-root p { margin: 0.3em 0; }
-    body.printing-resume #print-root ul,
-    body.printing-resume #print-root ol { margin: 0.3em 0 0.6em 1.2em; }
-    body.printing-resume #print-root li { margin: 0.1em 0; }
-    body.printing-resume #print-root a {
-        color: #000;
-        text-decoration: none;
-    }
-    @page { margin: 0.75in; }
+/* PDF canvas container inside the modal. */
+.resume-pdf-container {
+    overflow-y: auto;
+    max-height: calc(85vh - 120px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 /* Mobile pass: nav wraps, modal padding tightens, controls cheat collapses. */
@@ -830,6 +783,8 @@ body.grid-mode #iframe-toggle-stage { display: none; }
     font: inherit;
     cursor: pointer;
     transition: background 120ms;
+    text-decoration: none;
+    display: inline-block;
 }
 #resume-pdf-btn:hover { background: var(--accent); }
 
@@ -871,39 +826,3 @@ body.grid-mode #iframe-toggle-stage { display: none; }
     #resume-portfolio-btn { bottom: 1rem; right: 1rem; font-size: 0.82rem; padding: 0.55rem 0.9rem; }
 }
 
-/* Print: resume-page mode. Header chrome and portfolio button are hidden;
-   the body content prints with traditional serif typography. */
-@media print {
-    body.resume-page #resume-page-header,
-    body.resume-page #resume-portfolio-btn { display: none !important; }
-    body.resume-page #resume-page {
-        position: static !important;
-        overflow: visible !important;
-        background: #fff !important;
-    }
-    body.resume-page #resume-page-body {
-        padding: 0 !important;
-        overflow: visible !important;
-    }
-    body.resume-page #resume-page-rendered {
-        max-width: 100% !important;
-        color: #000;
-        font-family: Georgia, "Times New Roman", serif;
-        font-size: 11pt;
-        line-height: 1.4;
-    }
-    body.resume-page #resume-page-rendered h1 { font-size: 20pt; margin: 0 0 0.4em; }
-    body.resume-page #resume-page-rendered h2 {
-        font-size: 13pt;
-        margin: 0.9em 0 0.3em;
-        padding-bottom: 0.1em;
-        border-bottom: 1px solid #888;
-    }
-    body.resume-page #resume-page-rendered h3 { font-size: 11.5pt; margin: 0.7em 0 0.15em; }
-    body.resume-page #resume-page-rendered p { margin: 0.3em 0; }
-    body.resume-page #resume-page-rendered ul,
-    body.resume-page #resume-page-rendered ol { margin: 0.3em 0 0.6em 1.2em; }
-    body.resume-page #resume-page-rendered li { margin: 0.1em 0; }
-    body.resume-page #resume-page-rendered a { color: #000; text-decoration: none; }
-    body.resume-page #resume-page-rendered em { font-style: italic; }
-}
